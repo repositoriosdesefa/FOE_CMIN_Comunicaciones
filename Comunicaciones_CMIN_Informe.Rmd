@@ -1,0 +1,2000 @@
+---
+title-meta: "Reporte de CMIN"
+author-meta: "Sefa"
+date-meta: '\today'
+lang: es
+documentclass: article
+classoption: oneside
+keywords: "informe, r studio, r markdown, CMIN"
+geometry:
+- top=2cm
+- left=2.5cm
+- right=2.5cm
+- bottom=3.5cm
+papersize: a4
+fontsize: 11pt
+header-includes:
+- \usepackage[title,titletoc]{appendix}
+- \usepackage{lscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \newcommand{\Rlogo}{\protect\includegraphics[height=1.8ex,keepaspectratio]{Rlogo.png}}
+- \usepackage{floatrow}
+- \floatplacement{figure}{H}
+- \floatplacement{table}{H}
+- \floatsetup[figure]{capposition=top}
+- \floatsetup[table]{capposition=top}
+- \addtolength{\skip\footins}{1pc plus 2pt}
+- \usepackage{titlesec}
+- \titleformat*{\section}{\filright \normalsize \bfseries}
+- \titleformat*{\subsection}{\normalsize\bfseries}
+- \titleformat*{\subsubsection}{\normalsize\bfseries}
+- \renewcommand{\thesection}{\Roman{section}}
+- \renewcommand{\thesubsection}{\Alph{subsection}}
+- \usepackage{helvet}
+- \renewcommand{\familydefault}{\sfdefault}
+- \usepackage{colortbl}
+- \usepackage{array}
+- \usepackage{graphicx}
+- \usepackage{hhline,colortbl}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \setlength{\headheight}{64pt}
+- \fancyhf{}
+- \renewcommand{\headrulewidth}{0pt}
+- \fancyfoot[C]{\thepage}
+- \fancyhead[C]{\setlength{\arrayrulewidth}{0.35mm} \arrayrulecolor{white} \begin{tabular} { | >{\arraybackslash}m{1cm} | >{\arraybackslash}m{1cm} | >{\arraybackslash}m{2cm} | >{\arraybackslash}m{3.75cm} | >{\arraybackslash}m{6cm} |} \includegraphics[width=1cm]{peru} & \cellcolor{red} \textcolor{white}{PERÚ} & \cellcolor[gray]{0.2} \scriptsize \textcolor{white}{Ministerio del Ambiente} & \cellcolor[gray]{0.5} \scriptsize \textcolor{white}{Organismo de Evaluación y Fiscalización Ambiental} &  \cellcolor[gray]{0.5} \scriptsize \textcolor{white}{CMIN{:} Coordinación de Supervisión Ambiental en Minería} \\ \end{tabular}\\ \vspace{2mm}{\scriptsize "Decenio de la igualdad de oportunidades para mujeres y hombres"}\\ {\scriptsize "Año del Bicentenario del Perú{:} 200 años de independencia"}}
+mainfont: helvet
+output: 
+  pdf_document: 
+    fig_caption: yes
+    number_sections: yes
+    keep_tex: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+# I. LIBRERÍAS, CARGA DE DATOS, FUNCIONES Y PARÁMETROS ----
+
+## I.1. Librerías ----
+  library(lubridate)
+  library(ggplot2)
+  library(dplyr)
+  library(reshape)
+  library(reshape2)
+  library(stringr)
+  library(knitr)
+  library(kableExtra)
+  library(googledrive)
+  library(googlesheets4)
+  library(forcats)
+  library(readxl)
+  library(bizdays)
+  library(viridis)
+
+## I.2. Cargar y ordenar data ----
+FUENTE <- ""
+
+  # i) Descarga de base de datos
+  tp1 <- tempfile()
+  download.file(FUENTE, tp1, mode = "wb")
+  
+  # ii) Definición de diccionario de datos
+  DIC <- read_xlsx(path = tp1, sheet = "DIC")
+  DIC_CMIN <- DIC[DIC$'NO PUBLICABLE PERO NECESARIO (CSEP)' == "0", ]
+  DIC_CMIN <- DIC_CMIN[ , c(2:3)]
+  CABECERAS <- as.list(DIC_CMIN)
+  
+  # iii) Selección de información de acuerdo al diccionario
+  CMIN <- as.data.frame(read_xlsx(path = tp1, sheet = "REGISTRO"))
+  CMIN <- subset(CMIN, select = CABECERAS$'CAMPO EN BD')
+  colnames(CMIN) <- CABECERAS$'CODIGO CAMPO CSEP'
+  
+  # iv) Convertir columnas al formato correcto
+  CMIN$FI_OEFA <- as.Date(CMIN$FI_OEFA, "%d/%m/%Y")
+  CMIN$FI_DSEM <- as.Date(CMIN$FI_DSEM, "%d/%m/%Y")
+  CMIN$FI_CMIN <- as.Date(CMIN$FI_CMIN, "%d/%m/%Y")
+  CMIN$FI_COM <- as.Date(CMIN$FI_COM, "%d/%m/%Y")
+  CMIN$VENC_INT <- as.Date(CMIN$VENC_INT, "%d/%m/%Y")
+  CMIN$FR_PP_JEFE <- as.Date(CMIN$FR_PP_JEFE, "%d/%m/%Y")
+  CMIN$FR_VF_JEFE <- as.Date(CMIN$FR_VF_JEFE, "%d/%m/%Y")
+  CMIN$FE_VF_JEFE<- as.Date(CMIN$FE_VF_JEFE, "%d/%m/%Y")
+  CMIN$F_RECEP_PCD <- as.Date(CMIN$F_RECEP_PCD, "%d/%m/%Y")
+  
+
+## I.3. Funciones ----
+
+### I.3.1. Función para determinar periodos ----
+  som <- function(x) {
+    as.Date(format(x, "%Y-%m-01"))
+    }
+
+### I.3.2. Función para elaborar el gráfico circular ----
+   ggpie <- function (data) {
+  
+  COl1=data
+  
+  Tabla0=data.frame(COl1)
+  Tabla1 <- Tabla0 %>% 
+  group_by(COl1) %>% 
+  summarize(counts = n(),
+            porcentaje = round((n()/nrow(Tabla0))*100))
+  
+  Tabla1V <- Tabla1 %>% 
+    mutate(Labels = ifelse(Tabla1$porcentaje <= 3  ,
+                           "" ,paste0(Tabla1$porcentaje, "%") ))
+
+Graficocircular <- ggplot(data = Tabla1V, aes(x = "", y = counts, 
+                           fill = reorder(COl1,  - counts))) + 
+  geom_bar(stat = "identity", color = "black") +
+  coord_polar("y")+
+   geom_text(aes(x=1.65, label=Labels),
+            position = position_stack(vjust=0.5)) +
+ scale_fill_brewer(palette="Spectral") +
+    theme_void() +
+    theme(axis.ticks = element_blank(),
+          axis.text.y = element_blank(),
+            
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position="right",
+          legend.direction="vertical",
+          legend.title = element_blank(),
+          legend.text = element_text(colour="#666666", size=7));
+
+    #scale_y_continuous( breaks = tmp.breaks1, labels = tmp.percent2);
+    return( Graficocircular )
+   }
+  
+## I.4. Parámetros ----
+  
+### I.4.1. Determinar el periodo comprendido en el informe ----
+  
+  # i) Determinar el periodo del mes evaluado
+  Inicio <- som(som(Sys.Date()) - 1)
+  Fin <- som(Sys.Date()) - 1
+  Mes_evaluado <- month(Inicio, label=TRUE, abbr = FALSE)
+  Mes_evaluado <- str_to_lower(Mes_evaluado)
+  MES_EVALUADO <- str_to_upper(Mes_evaluado)
+  Mes_actual <- month(now(), label=TRUE, abbr = FALSE)
+  Mes_actual <- str_to_lower(Mes_actual)
+  
+  # ii) Determinar el periodo de los últimos doce meses 
+  Inicio_periodo <- Inicio %m-% months(11)
+  Mes_periodo <- month(Inicio_periodo, label=TRUE, abbr = FALSE)
+  Mes_evaluadolower <- str_to_lower(Mes_evaluado)
+  Mes_periodolower <- str_to_lower(Mes_periodo)
+
+### I.4.2. Generar el calendario a utilizar ----
+
+  # i) Crear el vector de Feriados en Perú
+  Feriados_en_Peru <- date(
+  c(
+    "2020-01-01",
+    "2020-04-09",
+    "2020-04-10",
+    "2020-05-01",
+    "2020-06-29",
+    "2020-07-28",
+    "2020-08-30",
+    "2020-10-08",
+    "2020-10-09",
+    "2020-11-01",
+    "2020-12-08",
+    "2020-12-25",
+    "2020-12-31",
+    "2021-01-01",
+    "2021-04-01",
+    "2021-04-02",
+    "2021-05-01",
+    "2021-06-29",
+    "2021-07-28",
+    "2021-07-29",
+    "2021-08-30",
+    "2021-10-08",
+    "2021-11-01",
+    "2021-12-08",
+    "2021-12-25",
+    "2021-12-31"
+    )
+  )
+
+  # ii) Crear el Calendario de Perú
+  Calendario_Peru <- create.calendar(
+    "Calendario_Peru",
+    holidays = Feriados_en_Peru,
+    weekdays = c("saturday", "sunday"),
+    start.date = "2020-01-01",
+    end.date = "2021-12-31",
+    adjust.from = adjust.next,
+    adjust.to = adjust.next,
+    financial = TRUE)
+  
+  # iii) Eliminar innecesarios
+  rm(Feriados_en_Peru) 
+  
+### I.4.3. Auxiliares - Letras ----
+  
+  Letrasdecolumnas <- data.frame(LETTERS)
+  Letras <- vector("list", nrow(Letrasdecolumnas))
+  
+  for (i in 1:nrow(Letrasdecolumnas)) {
+    Letras[[i]] <- data.frame(rep(Letrasdecolumnas$LETTERS[i],
+                                  nrow(Letrasdecolumnas)))
+  }
+  
+  Columna1 <- base::Reduce(function(...) merge(..., all = TRUE), Letras)
+  Columna1 <- select(Columna1,
+                     "Columna1" = names(Columna1)
+                     )
+  Vacio <- data.frame(rep("", nrow(Letrasdecolumnas)))
+  Vacio <- select(Vacio,
+                  "Columna1" = names(Vacio)
+                  )
+  Tabla <- merge(Vacio, Columna1, all = TRUE)
+  Columna2 <- rep(LETTERS, nrow(Letrasdecolumnas)+1)
+  Tabla <- mutate(Tabla,
+                  Columna2 = Columna2
+                  )
+  Tabla <- mutate(Tabla,
+                  Columna3 = gsub(" ","", paste(Tabla$Columna1,
+                                                Tabla$Columna2))
+                  )
+  Letrasdecolumnas <- c(Tabla$Columna3)
+
+  # Eliminar inncesarios
+  rm( Columna1,
+      Letras,
+      Tabla,
+      Vacio,
+      Columna2,
+      i,
+      som
+      )
+
+### I.4.4. Auxiliares - Tercera Sección ----
+  
+  CMIN_periodo <- CMIN %>% 
+    filter(FI_COM >= Inicio_periodo,
+           FI_COM <= Fin)
+  
+  # i) Auxiliares - Tercera Sección B
+  
+  Archivados <- CMIN_periodo %>% 
+    filter(ETAPA_ACT == "ARCHIVO")
+
+  Concluidos <- CMIN_periodo %>% 
+    filter(ETAPA_ACT == "CONCLUIDO")
+
+  SIN_DATOS <- CMIN_periodo %>% 
+    filter(is.na(ETAPA_ACT))
+  
+  # ii) Auxiliares - Tercera Sección C
+  CMIN_atendidos1 <- CMIN_periodo %>% 
+    select(ETAPA_ACT,
+           ATENC_COM,
+           AUX_ESTADO) %>% 
+    filter(ETAPA_ACT == "CONCLUIDO")
+
+  Falta <- CMIN_atendidos1 %>%
+    filter(is.na(ATENC_COM))
+
+  Falta1 <- CMIN_atendidos1 %>%
+    filter(ATENC_COM == "")
+
+  Falta2 <- CMIN_atendidos1 %>%
+    filter(ATENC_COM == "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+
+  CMIN_atendidos2 <- CMIN_atendidos1 %>%
+  filter(ATENC_COM != "",
+         ATENC_COM != "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+  
+  CMIN_atendidos2$ATENC_COM[CMIN_atendidos2$ATENC_COM == "ATENDIDO EN PLAZO"] <- "EN PLAZO"
+  CMIN_atendidos2$ATENC_COM[CMIN_atendidos2$ATENC_COM == "ATENDIDO FUERA DE PLAZO"] <- "FUERA DE PLAZO"
+  
+  Atendido_enplazo <- CMIN_atendidos2 %>% 
+    filter(ATENC_COM == "EN PLAZO")
+  
+  Atendido_fueradeplazo <- CMIN_atendidos2 %>% 
+    filter(ATENC_COM == "FUERA DE PLAZO")
+  
+  # iii) Auxiliares - Tercera Sección D
+  
+  CMINporresponsable1 <- CMIN_periodo %>%
+  filter(ETAPA_ACT == "CONCLUIDO",
+         !is.na(RESPONSABLE))
+
+  CMINsinresponsable <- CMIN_periodo %>% 
+    filter(ETAPA_ACT == "CONCLUIDO",
+           is.na(RESPONSABLE))
+  
+### I.4.5. Auxiliares - Cuarta Sección ----
+  
+   CMIN_mes_i <- CMIN %>% 
+     filter(FI_COM >= Inicio,
+            FI_COM <= Fin)
+   
+  # i) Auxiliares - Cuarta Sección B
+   
+   CMIN_mes <- CMIN %>% 
+     filter(FR_VF_JEFE >= Inicio,
+            FR_VF_JEFE <= Fin)
+   
+   CMIN_atendidos_mes1 <- CMIN_mes %>% 
+     select(ETAPA_ACT,
+            ATENC_COM,
+            AUX_ESTADO) %>% 
+     filter(ETAPA_ACT == "CONCLUIDO")
+   
+   Falta_mes <- CMIN_atendidos_mes1 %>%
+     filter(is.na(ATENC_COM))
+   
+   Falta1_mes <- CMIN_atendidos_mes1 %>%
+    filter(ATENC_COM == "")
+   
+   Falta2_mes <- CMIN_atendidos_mes1 %>%
+    filter(ATENC_COM == "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+   
+   CMIN_atendidos_mes <- CMIN_atendidos_mes1 %>%
+  filter(ATENC_COM != "",
+         ATENC_COM != "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+  
+  CMIN_atendidos_mes$ATENC_COM[CMIN_atendidos_mes$ATENC_COM == "ATENDIDO EN PLAZO"] <- "EN PLAZO"
+  CMIN_atendidos_mes$ATENC_COM[CMIN_atendidos_mes$ATENC_COM == "ATENDIDO FUERA DE PLAZO"] <- "FUERA DE PLAZO"
+
+  Atendido_enplazo_mes <- CMIN_atendidos_mes %>% 
+    filter(ATENC_COM == "EN PLAZO")
+  
+  Atendido_fueradeplazo_mes <- CMIN_atendidos_mes %>%
+    filter(ATENC_COM == "FUERA DE PLAZO")
+  
+### I.4.6. Auxiliares - Quinta Sección ----
+  
+  # i) Auxiliares - Quinta Sección A
+  
+   Clase <- vector("double", ncol(CMIN))
+
+  for (i in seq_along(CMIN)) {
+    Clase[[i]] <- class(CMIN[[i]])
+    }
+
+    # Graficar tabla
+  Variables <- data.frame(
+    "No." = seq(1:ncol(CMIN)),
+    "Col." = Letrasdecolumnas[1:ncol(CMIN)],
+    Nombre = c(
+      "COD DSEM",
+      "No. HT / CORREO, ETC.",
+      "INGRESO A OEFA",
+      "INGRESO A DSEM",
+      "INGRESO A CMIN",
+      "INGRESO A COMUNICACIONES",
+      "TIPO DE DOCUMENTO",
+      "COD DOCUMENTO",
+      "TIPO DE ENTIDAD SOLICITANTE",
+      "PROCEDENCIA_PCD",
+      "NOMBRE DE ENTIDAD_PCD",
+      "NOMBRE DE LA ENTIDAD SOLICITANTE",
+      "RESPONSABLE",
+      "ACCION TAREA A REALIZAR",
+      "PRODUCTO A ENTREGAR",
+      "ADMINISTRADO INVOLUCRADO",
+      "U. FISCALIZABLES INVOLUCRADAS",
+      "N° DE UNIDADES FISCALIZABLES INVOLUCRADAS",
+      "¿INCLUYE UNIDADES CRÍTICAS?",
+      "PLAZO INTERNO PRE ESTABLECIDO",
+      "VENCIMIENTO INTERNO",
+      "FECHA DE REMISION DE PRIMER PROYECTO A JEFE",
+      "FECHA DE REMISION VERSION FINAL A JEFE",
+      "FECHA DE EMISION DEL JEFE (VERSION FINAL)",
+      "TIPO DE DOCUMENTO EMITIDO POR COMUNICACIONES (VERSION FINAL)",
+      "CODIGO DE DOCUMENTO EMITIDO (VERSION FINAL)",
+      "FECHA DE CARGO O RECEPCION PCD",
+      "ETAPA ACTUAL",
+      "ATENCION COMUNICACIONES",
+      "AUX_ESTADO",
+      "PESO TAREA",
+      "OBSERVACIONES",
+      "ERROR EN FECHAS",
+      "ROTULO",
+      "1) T_OEFA-DSEM",
+      "2) T_DSEM-CMIN",
+      "3) T_CMIN-COM",
+      "4) T_ADMIN (1+2+3)",
+      "5) T_COM-INF_I",
+      "6) T_COM-INF_F",
+      "T_COM_INF_I_AUX",
+      "T_COM_INF_F_AUX",
+      "7) T_CORREC (6+5)",
+      "8) T_JEFE_DSEM",
+      "10) T_COM (6+8)",
+      "11) T_CMIN (10+9)",
+      "Proyecto"
+      ),
+    Clase = Clase
+    )
+
+  Variables <- Variables %>% 
+    mutate(Tipo = ifelse(Clase == "character", "Texto", 
+                         ifelse(Clase == "Date", "Fecha", 
+                              ifelse(Clase == "logical", "Lógico",
+                                     ifelse(Clase == "integer", "Número",
+                                            "Otro")))))
+  Variables <- Variables %>% 
+    select("No." = "No.",
+           "Col." = "Col.",
+           Nombre = "Nombre",
+           Tipo = "Tipo")
+  
+  # i) Auxiliares - Quinta Sección B
+  
+    # Procesar información
+  SaleNA <- vector(mode = "double", ncol(CMIN))
+
+  for(i in seq_along(CMIN)){
+    x <- data.frame(table(CMIN[[i]], useNA = "always"))
+    y <- filter(x, is.na(x$Var1))
+    SaleNA[[i]] <- sum(y$Freq)
+  }
+
+  Columna <- names(CMIN)
+  data <- data.frame(id = Letrasdecolumnas[1:ncol(CMIN)],
+                     Columna, 
+                     SaleNA)
+  data <- data %>% 
+    mutate(nombre = paste("Columna", id),
+           nombre = fct_reorder(nombre, SaleNA))
+  data <- data %>% 
+    filter(SaleNA > 0)
+  
+  # i) Auxiliares - Quinta Sección C
+  
+    # Generar tabla de variables que son fechas
+  Col_fechas <- filter(Variables,
+                       Variables$Tipo == "Fecha")
+
+  Col_fechas <- mutate(Col_fechas,
+                       "No." = seq(1:nrow(Col_fechas)))
+  
+  Col_fechas <- select(Col_fechas,
+                       "No." = "No.",
+                       "Col." = "Col.",
+                       Nombre = "Nombre")
+
+    # Generar tabla sólo de fechas
+  CMIN_fechas <- select(CMIN,
+                        FI_OEFA,
+                        FI_DSEM,
+                        FI_CMIN,
+                        FI_COM,
+                        VENC_INT,
+                        FR_PP_JEFE,
+                        FR_VF_JEFE,
+                        FE_VF_JEFE,
+                        F_RECEP_PCD)
+
+    # Agregar cantidad de datos completados a "Col_fechas"
+  Datos_fecha <- vector(mode = "double", ncol(CMIN_fechas))
+  for(i in seq_along(CMIN_fechas)){
+    x <- data.frame(table(CMIN_fechas[[i]], useNA = "always"))
+    y <- filter(x, !is.na(x$Var1))
+    Datos_fecha[[i]] <- sum(y$Freq)
+    }
+
+  Col_fechas <- mutate(Col_fechas,
+                       Datos = Datos_fecha)
+
+    # Eliminar innecesarios
+  rm(Datos_fecha,
+     x,
+     y)
+  
+### I.4.7. Colores institucionales ----
+  OEFA.AZUL1<-c("#144AA7")
+  OEFA.CELESTE<-c("#0BC7E0")
+  OEFA.VERDE<-c("#8CCD3A")
+  OEFA.JADE<-c("#44bfb5")
+  OEFA.AZUL2<-c("#1d85bf")
+  OEFA.GRIS<-c("#696A6A")
+  OEFA.NARANJA<-c("#FFB500")
+  
+  #Colores secundarios
+  OEFA.MORADO<-c("#4F4898")
+  OEFA.LIMON<-c("#D5CB00")
+  OEFA.ROJO<-c("#EF0C33")
+  OEFA.HUMO<-c("#BCBCBC")
+  OEFA.NARANJA2<-c("#EF7911")
+  OEFA.FUCSIA<-c("#E83670")
+```
+\rightline{\footnotesize \textbf{Sin registro en el Siged}}
+\vspace{0mm}
+\centerline{\textbf{INFORME INTERNO}}
+\vspace{3mm}
+\begin{tabular}
+{ p{1.65cm}  p{0.2cm}  p{12.85cm} }
+\textbf{A} & : & \textbf{ALEX SANTIAGO URIARTE ORTIZ}\\
+& & Coordinador de Supervisión Ambiental en Minería \\
+& & \\
+\textbf{ASUNTO} & : & Resumen de la información consignada en el Registro del Equipo de Comunicaciones de la Coordinación de Minería de la Dirección de Supervisión de Energía y Minas\\
+& & \\
+\textbf{FECHA} & : & Lima, `r day(now())` de `r Mes_actual` de `r year(now())` \\
+& & \\
+\hline
+\end{tabular}
+\vspace{1mm}
+\normalsize
+\setlength{\parskip}{10px}
+Me es grato dirigirme a usted para saludarlo y presentarle un informe que contiene el resumen de la información consignada en el Registro del Equipo de Comunicaciones de la Coordinación de Minería de la Dirección de Supervisión de Energía y Minas (en adelante, **el Registro**).[^PRE1]
+
+# OBJETO DEL INFORME
+
+1. Este documento ha sido elaborado con la finalidad de facilitar el control y seguimiento del trabajo realizado por el Equipo de Comunicaciones, proporcionando un insumo que puede ser utilizado para analizar el desempeño del equipo y de sus miembros. En caso de realizar dicho análisis, es necesario tomar en cuenta otra información que complemente a la que se presenta en este informe (como, por ejemplo, la que pueda brindar la persona que lidera el equipo).
+
+2. La confiabilidad de la información presentada en este documento depende del correcto llenado del Registro por parte del Equipo de Comunicaciones. En este sentido, se recomienda acompañar este informe con otro que de cuenta de los resultados de haber realizado una comprobación aleatoria de dicha información.
+
+# PUNTOS A DESARROLLAR
+
+3. Para facilitar la lectura de este documento, la información presentada ha sido agrupada en torno a tres (3) puntos:
+
+* Resumen de la información registrada durante los últimos doce meses[^PRE2].
+
+* Resumen de la información registrada en `r Mes_evaluado` de `r year(Inicio)`.
+
+* Información que contribuye a identificar errores de llenado en el Registro.
+
+4. La información utilizada en el desarrollo de estos puntos se encuentra actualizada a las `r hour(now())` horas y `r minute(now())` minutos del `r day(now())` de `r Mes_actual` de `r year(now())`.
+
+\newpage
+
+# RESUMEN DE LOS ÚLTIMOS DOCE MESES
+
+## Distribución de los requerimientos recibidos durante los últimos doce meses por solicitante y tipo de pedido
+
+5. De acuerdo con la información del Registro, durante los últimos doce meses el Equipo de Comunicaciones ha recibido **`r nrow(CMIN_periodo)` requerimientos de información**. Estos requerimientos provienen de diferentes entidades, las mismas que -para facilitar su tratamiento- han sido clasificadas en doce (12) categorías[^PRE3]. La Figura \ref{Piesolicitantegeneral} muestra cómo se han distribuido los requerimientos recibidos por el mencionado equipo según la categoría a la que pertenece el solicitante.
+
+```{r fig.cap="\\label{Piesolicitantegeneral}Distribución de los requerimientos recibidos en el año, por solicitante", fig.height=3}
+# II. TERCERA SECCIÓN A ----
+
+# II.1. Figura 1  ----
+
+  # i) Preparar la información
+
+  CMIN_requerimiento <- CMIN %>% 
+    filter (FI_COM<= Fin,
+            FI_COM>= Inicio_periodo)
+  
+  CMIN_requerimiento$T_ENTIDAD[CMIN_requerimiento$T_ENTIDAD == "PCD"] <- "OTROS"
+  
+  vector <- CMIN_requerimiento$T_ENTIDAD
+  
+  # ii) Graficar ggpie
+  Figura1 <- ggpie(vector)
+  Figura1
+  
+  # iii) Eliminar innecesarios
+  rm(vector)
+```
+
+6. El Cuadro \ref{reqportipo} muestra cómo se distribuyen los requerimientos recibidos por el Equipo de Comunicaciones durante los últimos doce meses de acuerdo al tipo de requerimiento realizado.
+
+\arrayrulecolor{black}
+```{r}
+## II.2. Cuadro 1 ----
+  
+  # i) Preparar la información
+
+  tareas0 <- data.frame(table(CMIN_periodo$ACCION_TAREA, useNA = c("ifany")))
+
+  tareas <- tareas0 %>%
+    mutate(Porcentaje = paste0(round(Freq/sum(Freq)*100,
+                                     digits = 2),
+                               "%")) %>% 
+    select("Tipo de requerimiento" = "Var1",
+           Cantidad = "Freq",
+           Porcentaje = "Porcentaje")
+ 
+  # ii) Graficar tabla
+  kable(tareas, caption = "\\label{reqportipo}Cantidad y porcentaje de
+        requerimientos por tipo", align= "lcr", format = "latex") %>%
+    kable_styling(font_size = 8, bootstrap_options = "bordered",
+                  latex_options = "HOLD_position", full_width = FALSE) %>%
+    column_spec(1 , latex_valign = "m", width = "8cm", border_left = TRUE) %>%
+    column_spec(2 , latex_valign = "m", width = "2cm") %>%
+    column_spec(3 , latex_valign = "m", width = "2cm", border_right = TRUE) %>%
+    row_spec(0, bold = TRUE, color = "white", background = "black", align = "c")
+
+  # iii) Eliminar innecesarios
+rm(tareas0,
+   tareas)
+```
+
+7. A continuación, el Cuadro \ref{tablatiposolicitante} muestra una tabla de doble entrada donde se clasifican los requerimientos recibidos por el Equipo de Comunicaciones durante los últimos doce meses teniendo en cuenta ambos criterios: solicitante y tipo de requerimiento.
+
+\newpage
+
+\blandscape
+\vspace*{\fill}
+\extrarowheight = -0.5ex
+\renewcommand{\arraystretch}{2.25}
+\arrayrulecolor{black}
+```{r}
+## II.3. Cuadro 2 ---- 
+
+  # i) Preparar información
+
+  CMINtareasporsolicitante0 <- CMIN_periodo %>%
+    mutate(id = seq(1:nrow(CMIN_periodo))) %>%
+    select(TIPO = "ACCION_TAREA",
+           SOLICITANTE = "T_ENTIDAD",
+           ID = "id") %>% 
+    filter(!is.na(TIPO))
+
+
+   # CMINtareasporsolicitante0 <- mutate(CMIN_periodo,
+   #                                     id = seq(1:nrow(CMIN_periodo)))
+   # CMINtareasporsolicitante0 <- select(CMIN_periodo,
+   #                                     TIPO = "ACCION_TAREA",
+   #                                     SOLICITANTE = "T_ENTIDAD",
+   #                                     ID = "id")
+   # CMINtareasporsolicitante0 <- filter(CMIN_periodo,
+   #                                     !is.na(TIPO))
+        
+  CMINtareasporsolicitante <- CMINtareasporsolicitante0 %>%
+    melt(value.name = "Cantidad") %>% 
+    group_by(TIPO,
+             SOLICITANTE) %>% 
+    summarise(num = n())
+    
+  CMINtareasporsolicitante <- cast(CMINtareasporsolicitante,
+                                   TIPO~SOLICITANTE)
+  
+  CMINtareasporsolicitante[is.na(CMINtareasporsolicitante)] <- "-"
+
+# ii) Graficar tabla
+kable(CMINtareasporsolicitante, caption = "\\label{tablatiposolicitante} Cantidad de requerimientos recibidos por tipo y solicitante", align= "lccccccccccccc", format = "latex") %>%
+kable_styling(font_size = 6.5, bootstrap_options = "bordered", latex_options = "HOLD_position", full_width = FALSE, position = "center") %>%
+column_spec(1 , latex_valign = "m", width = "1.8 cm", border_left = TRUE) %>%
+column_spec(2 , latex_valign = "m", width = "1.6cm") %>%
+column_spec(3 , latex_valign = "m", width = "1cm") %>%
+column_spec(4 , latex_valign = "m", width = "1.3cm") %>%
+column_spec(5 , latex_valign = "m", width = "1.1cm") %>%
+column_spec(6 , latex_valign = "m", width = "1.3cm") %>%
+column_spec(7 , latex_valign = "m", width = "1.5cm") %>%
+column_spec(8 , latex_valign = "m", width = "1.5cm") %>%
+column_spec(9 , latex_valign = "m", width = "1.5cm") %>%
+column_spec(10 , latex_valign = "m", width = "1.5cm") %>%
+column_spec(11 , latex_valign = "m", width = "1cm") %>%
+column_spec(12 , latex_valign = "m", width = "1cm") %>%
+column_spec(13 , latex_valign = "m", width = "0.8cm") %>%
+column_spec(14 , latex_valign = "m", width = "1.2cm", border_right = TRUE) %>%
+row_spec(0, bold = TRUE, color = "white", background = "black", align = "c")
+
+# iii) Eliminar inncesarios
+rm(CMINtareasporsolicitante0,
+   CMINtareasporsolicitante)
+```
+\extrarowheight = 0ex
+\renewcommand{\arraystretch}{0}
+\vspace*{\fill}
+\elandscape
+\newpage
+
+## Estado general de los requerimientos recibidos durante los últimos doce meses
+
+8. Como se muestra en la Figura \ref{PieEstadoGeneral}, de los `r nrow(CMIN_periodo)` requerimientos de información recibidos por el Equipo de Comunicaciones, `r nrow(CMIN_periodo) - nrow(SIN_DATOS)` cuentan con información que permite definir su estado[^PRE4]. De estos: (i) `r nrow(Archivados)` fueron archivados (el `r round(nrow(Archivados)/(nrow(CMIN_periodo)- nrow(SIN_DATOS))*100, digits=0)`%); (ii) `r nrow(Concluidos)` fueron atendidos concluyendo su trámite (el `r round(nrow(Concluidos)/(nrow(CMIN_periodo)- nrow(SIN_DATOS))*100, digits=0)`%); y (iii) `r nrow(CMIN_periodo)-(nrow(Archivados)+nrow(Concluidos)+nrow(SIN_DATOS))` se encuentran pendientes de atención (el `r round((nrow(CMIN_periodo)-(nrow(Archivados)+nrow(Concluidos)+nrow(SIN_DATOS)))/(nrow(CMIN_periodo)- nrow(SIN_DATOS))*100, digits=0)`%).
+
+```{r fig.cap="\\label{PieEstadoGeneral}Estado de los requerimientos recibidos en el año", fig.height=2}
+# III. TERCERA SECCIÓN B ----
+
+# III.1. Figura 2 ----
+
+  # i) Preparación de la información
+
+  CMIN_Estadogeneral <-  CMIN_periodo %>%
+    mutate(Estado = ifelse(ETAPA_ACT == "ARCHIVO",
+                           "ARCHIVO",
+                           ifelse(ETAPA_ACT == "CONCLUIDO",
+                                  "CONCLUIDO",
+                                  ifelse(ETAPA_ACT == "EN ELABORACIÓN",
+                                  "PENDIENTE",
+                                  "PENDIENTE"))))
+
+  CMIN_Estadogeneral_NA <- CMIN_Estadogeneral %>%
+    filter(is.na(Estado))
+  
+  # ii) Graficar ggpie
+  vector <- CMIN_Estadogeneral$Estado
+  Figura2 <- ggpie(vector)
+  Figura2
+
+  # iii) Eliminar innecesarios
+  rm(vector,
+     CMIN_Estadogeneral)
+```
+
+9. Dejando de lado aquellos requerimientos que fueron archivados, la Figura \ref{BarrasmesamesEstadoGeneral} muestra cómo se distribuyen mes a mes los requerimientos de información cuyo trámite ha concluido y aquellos que aún se encuentran pendientes de atención, distinguiendo a estos últimos en: (i) aquellos que ya cuentan con un borrador o proyecto; y, (ii) aquellos que se encuentran en proceso de elaboración. 
+
+
+```{r fig.cap="\\label{BarrasmesamesEstadoGeneral}Estado por el mes en que ingresaron al Equipo de Comunicaciones", fig.height=3.5}
+
+## III.2. Figura 3 ----
+
+  # i) Preparar la información: Filtrar el estado distinto a "ARCHIVO" y diferentes a NA
+  
+  CMIN_filtro <- CMIN_periodo %>%
+    filter(ETAPA_ACT != "ARCHIVO",
+           !is.na(FI_COM)) %>% 
+    mutate(Mes = month(FI_COM),
+           Periodo = year(FI_COM))
+
+  # Columna Auxiliar de Fecha para el orden
+  CMINpormes <- CMIN_filtro %>%
+    mutate(FECHA = as.Date(paste0(Periodo,"-",Mes,"-01"),
+                           format='%Y-%m-%d')) %>% 
+    select(FECHA,
+           Estado = "ETAPA_ACT") %>% 
+    group_by(FECHA,
+             Estado) %>% 
+    summarise(Num = n())
+  
+  CMINpormes$Estado <- fct_relevel(CMINpormes$Estado, "EN ELABORACION",
+                                   "PROYECTO", "CONCLUIDO", "#REF!")
+
+# ii) Gráficar ggplot
+  Figura3 <- ggplot(CMINpormes, aes(x=FECHA, y=Num, fill=Estado)) +
+    geom_bar(stat = "identity", colour= "black") +
+    geom_text(aes(label = Num), position = position_stack(vjust = 0.6),
+              color = "black", size = 3) +
+    labs(x="", y="") +
+    scale_fill_manual("Estado", values = alpha( c(
+      OEFA.AZUL1, OEFA.VERDE,
+      OEFA.JADE, OEFA.CELESTE)) ) +
+    scale_x_date(date_labels = "%B",breaks = "1 month", expand = c(0.01,0)) +
+    theme(axis.ticks = element_blank(),
+          axis.text.y = element_blank(),
+          axis.text.x = element_text( colour = "black", 
+                                      size = 7, face = "bold",),
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position="bottom",
+          legend.direction="horizontal",
+          legend.title = element_blank(),
+          legend.text = element_text(colour="#666666", 
+                                     size=7))
+  Figura3
+
+# iii) Eliminar innecesarios
+rm(CMINpormes)
+```
+
+\newpage
+
+## Plazos de atención de los requerimientos a lo largo de los últimos doce meses
+
+10. En esta sección, el análisis se enfoca en los `r nrow(CMIN_atendidos2)` requerimientos que ya han sido atendidos y cuentan con información completa ingresada en el Registro.[^PRE5] Con relación a dicho universo tenemos que: (i) `r nrow(Atendido_enplazo)` requerimientos fueron atendidos en plazo (el `r round(nrow(Atendido_enplazo)/nrow(CMIN_atendidos2)*100, digits=2)`%); y, (ii) `r nrow(Atendido_fueradeplazo)` fueron atendidos fuera de plazo (el `r round(nrow(Atendido_fueradeplazo)/nrow(CMIN_atendidos2)*100, digits=2)`%).[^PRE6]. Y con relación a los recibidos por cada mes, en la Figura \ref{BarrasmesamesAtendidos} se muestra el desagregado mensual de los requerimientos atendidos en plazo y fuera de plazo. 
+
+```{r fig.cap="\\label{BarrasmesamesAtendidos}Requerimientos atendidos por el mes en el que ingresaron en el equipo de comunicaciones, según fueron atendidos dentro o fuera de plazo", fig.height=3.5}
+# IV. TERCERA SECCIÓN C ----
+
+# IV.1. Figura 4 ----
+
+# i) Preparar la información   
+  CMIN_filtro1 <- CMIN_periodo %>%
+    filter(ATENC_COM!= "ARCHIVADO",
+           ATENC_COM!= "PENDIENTE EN PLAZO",
+           ATENC_COM!= "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE",
+           ATENC_COM!= "VENCIDO",
+           !is.na(FI_COM)) %>% 
+    mutate(Mes = month(FI_COM),
+           Periodo = year(FI_COM))
+
+  CMINpormes1 <- CMIN_filtro1 %>%
+    mutate(FECHA = as.Date(paste0(Periodo,"-",Mes,"-01"),
+                           format='%Y-%m-%d')) %>% 
+    select(FECHA,
+           Atencion = "ATENC_COM") %>% 
+      group_by(FECHA,
+             Atencion) %>% 
+    dplyr::summarise(Num = n())
+
+  CMINpormes2 <- CMINpormes1 %>% 
+    group_by(FECHA) %>% 
+    mutate(porcentaje = Num/sum(Num))
+
+  CMINpormes2$Atencion <- fct_relevel(CMINpormes2$Atencion, "ATENDIDO FUERA DE PLAZO", "ATENDIDO EN PLAZO")
+# ii) Gráficar ggplot
+  Figura4 <- ggplot(CMINpormes2, aes(y = Num, x = FECHA, fill = Atencion)) +
+    geom_bar(position = "fill", stat = "identity", color = "black") +
+    geom_text(aes(label = Num), position = position_fill(vjust = 0.5),
+              color = "black", size = 3) +
+    labs(x="", y="")+
+    scale_fill_manual("Atencion", values = alpha( c(
+      OEFA.HUMO, OEFA.NARANJA)))+
+    scale_y_continuous(labels = scales::percent)+
+    scale_x_date(date_labels = "%B",breaks = "1 month", expand = c(0.01,0))+
+       theme(axis.ticks = element_blank(),
+      #        axis.text.y = element_blank(),
+        axis.text.x = element_text(colour = "black", 
+                                      size = 7, face = "bold",),
+            axis.title = element_blank(),
+            plot.title = element_text( hjust = 0.5, vjust = 0.5),
+            legend.position="bottom",
+            legend.direction="horizontal",
+            legend.title = element_blank(),
+            legend.text = element_text(colour="#666666", 
+                                       size=7))
+
+  Figura4
+# iii) Eliminar innecesarios
+rm(CMINpormes1)
+```
+
+11. Otra manera de analizar esta información es observar los requerimientos atendidos agrupándolos por el plazo en el que ocurre esta atención. La Figura \ref{Histogramaatendidos} muestra de manera gráfica como ocurre esta agrupación.[^PRE7]
+
+```{r fig.cap="\\label{Histogramaatendidos}Cantidad de requerimientos agrupados por el plazo en el que fueron atendidos", fig.height=2.5}
+# IV.2. Figura 5 ----
+  # i) Preparar la información
+  Tiempos0 <- CMIN_periodo %>% 
+    select(RESPONSABLE,
+           ETAPA_ACT,
+           ATENC_COM,
+           AUX_ESTADO,
+           FI_COM,
+           FR_VF_JEFE,
+           FE_VF_JEFE,
+           T_ENTIDAD,
+           ACCION_TAREA)
+
+  Tiempos_filtro <- Tiempos0 %>% 
+    filter(ETAPA_ACT == "CONCLUIDO",
+           ATENC_COM != "",
+           ATENC_COM != "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+  
+  Tiempos <- Tiempos_filtro %>% 
+    mutate(Díastranscurridos = bizdays(FI_COM,
+                                       FE_VF_JEFE,
+                                       Calendario_Peru),
+           Díastranscurridos2 = bizdays(FI_COM,
+                                        FR_VF_JEFE,
+                                        Calendario_Peru))
+ 
+# ii) Graficar ggplot
+  
+  Figura5 <- ggplot(Tiempos, aes(x=Díastranscurridos)) +
+    geom_histogram(binwidth=1, fill=OEFA.AZUL2, color="black", alpha=0.9)+
+    labs(x="Plazo de atención (en días hábiles)",
+         y="Cantidad de requerimientos")
+  
+  Figura5
+```
+
+12. Las Figuras \ref{Histogramaplazoatendidosporsolicitante} y \ref{Histogramaplazoatendidosportipo} muestran la información de la Figura \ref{Histogramaatendidos} agrupándola por la categoría de solicitante y el tipo de requerimiento respectivamente.
+
+\newpage
+
+```{r fig.cap="\\label{Histogramaplazoatendidosporsolicitante}Cantidad de requerimientos agrupados por el plazo en el que fueron atendidos y el solicitante", fig.height=9.5}
+# IV.3. Figura 6 ----
+# i) Graficar ggplot
+  Figura6 <- ggplot(Tiempos, aes(x=Díastranscurridos, fill=T_ENTIDAD)) + 
+  geom_histogram(binwidth=1, color="black", alpha=0.9) +
+  labs(x="Plazo de atención (en días hábiles)", 
+       y="Cantidad de requerimientos") +
+  facet_grid(rows = vars(Tiempos$T_ENTIDAD),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+  scale_fill_brewer(palette="Spectral") +
+  theme(strip.background = element_rect(fill = "grey20", 
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7),
+        legend.position = "none")
+
+  Figura6
+
+```
+
+\newpage
+
+```{r fig.cap="\\label{Histogramaplazoatendidosportipo}Cantidad de requerimientos agrupados por el plazo en el que fueron atendidos y el tipo de requerimiento que fue realizado", fig.height=9.5}
+# IV.4. Figura 7 ----
+# i) Graficar ggplot
+  Figura7 <- ggplot(Tiempos, aes(x=Díastranscurridos, fill=ACCION_TAREA)) +
+  geom_histogram(binwidth=1, color="black", alpha=0.9) +
+  labs(x="Plazo de atención (en días hábiles)",
+       y="Cantidad de requerimientos") +
+  facet_grid(rows = vars(Tiempos$ACCION_TAREA),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+  scale_fill_brewer(palette="Blues") +
+  theme(strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7),
+        legend.position = "none")
+
+  Figura7
+
+```
+
+\newpage
+
+## Producción y tiempos del personal durante los últimos doce meses [^PRE8]
+
+13. Los `r nrow(CMINporresponsable1)` requerimientos de información cuyo trámite se encuentra concluido fueron atendidos por los miembros del Equipo de Comunicaciones según el detalle que se muestra en la Figura \ref{cantidadporespecialista}.[^PRE9]
+
+```{r fig.cap="\\label{cantidadporespecialista}Cantidad de requerimientos atendidos por responsable asignado", fig.height=2.5}
+# V. TERCERA SECCIÓN D ----
+# V.1. Figura 8 ----
+  # i) Preparar la información
+  CMINporresponsable2 <- CMINporresponsable1 %>%
+    filter(RESPONSABLE == c("CLAUDIA ESPINOZA", "ERIKA SUAREZ",
+                           "JENIFFER MORENO", "LIM TENORIO")) %>% 
+    select(RESPONSABLE) %>% 
+    melt(value.name = "Cantidad") %>% 
+    group_by(RESPONSABLE) %>% 
+    summarise(Num = n()) 
+
+  x <- data.frame(table(CMINporresponsable2$RESPONSABLE))
+  x <- as.character(x$Var1)
+
+  # ii) Graficar ggplot
+  Figura8 <- ggplot(CMINporresponsable2, aes(x=RESPONSABLE,
+                                  y=Num, fill = RESPONSABLE)) +
+    geom_bar(stat = "identity", width=0.6, colour= "black") +
+    geom_text(aes(label = Num), position = position_stack(vjust = 0.5),
+              color = "black", size = 4) +
+    labs(x="", y="") +
+    scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+    scale_x_discrete(labels=str_wrap(x,
+                                     width=2)) +
+    theme(axis.ticks = element_blank(),
+          axis.text.x = element_text(colour = "black", size = 7),
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position="none")
+  
+  Figura8
+```
+
+14. Como complemento de lo indicado en la Figura \ref{cantidadporespecialista}, conviene saber en cuánto tiempo los miembros del equipo atendieron los requerimientos que les fueron asignados. Con esta finalidad se ha elaborado el diagrama de cajas o *box-plot* que aparece en la Figura \ref{Plazoporespecialista}.[^PRE10]
+
+```{r fig.cap="\\label{Plazoporespecialista}Representación del plazo de atención por responsable asignado", fig.height=3}
+# V.2. Figura 9 ----
+# i) Graficar ggplot
+  Figura9 <- Tiempos  %>%
+   filter(RESPONSABLE == c("CLAUDIA ESPINOZA", "ERIKA SUAREZ",
+                           "JENIFFER MORENO", "LIM TENORIO")) %>% 
+  ggplot( aes(x=RESPONSABLE, y=Díastranscurridos2, fill=RESPONSABLE)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+  xlab("")+
+  scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2,OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+  scale_x_discrete(labels=str_wrap(x,
+                                   width=2)) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 7),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none")
+
+  Figura9
+```
+
+15. Las Figuras \ref{cantidadporespecialistaportipo} y \ref{plazodeatencionporespecialistaportipo} muestran la información de las Figuras \ref{cantidadporespecialista} y \ref{Plazoporespecialista} respectivamente, agrupándola adicionalmente por el tipo de requerimiento.
+
+\newpage
+
+```{r fig.cap="\\label{cantidadporespecialistaportipo}Cantidad de requerimientos atendidos por responsable asignado y por tipo", fig.height=9.5}
+# V.3. Figura 10 ----
+  # i) Preparar la información para Figura 10 y 11
+  CMINporresponsable0 <- CMIN_periodo %>%
+    filter(ETAPA_ACT == "CONCLUIDO",
+         !is.na(RESPONSABLE))
+
+  CMINporresponsable <- CMINporresponsable0 %>%
+     filter(RESPONSABLE == c("CLAUDIA ESPINOZA", "ERIKA SUAREZ",
+                           "JENIFFER MORENO", "LIM TENORIO")) %>% 
+    select(RESPONSABLE,
+           PEDIDO = "ACCION_TAREA") %>% 
+    melt(value.name = "Cantidad") %>% 
+    group_by(RESPONSABLE,
+             PEDIDO) %>% 
+    summarise(Num = n()) 
+  
+# ii) Graficar ggplot de Figura 10
+  Figura10 <- ggplot(CMINporresponsable, aes(x=1, 
+                                             y=Num, fill = RESPONSABLE)) + 
+  geom_bar(stat = "identity", width=0.6, colour= "black") +
+  geom_text(aes(label = Num), position = position_stack(vjust = 0.5),
+            color = "black", size = 4) +
+    labs(x="", y="") +
+    facet_grid(cols = vars(CMINporresponsable$RESPONSABLE),
+               rows = vars(CMINporresponsable$PEDIDO),
+               labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+     scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+    theme(axis.ticks = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position="none",
+          legend.direction="horizontal",
+          legend.title = element_blank(),
+          legend.text = element_text(colour="#666666", 
+                                     size=8),
+          strip.background = element_rect(fill = "grey20",
+                                          color = "grey80", size = 1),
+          strip.text = element_text(colour = "white", size = 7))
+  
+  Figura10
+
+# 16.3. Eliminar innecesarios
+rm(CMINporresponsable0,
+   CMINporresponsable)
+```
+
+\newpage
+
+```{r fig.cap="\\label{plazodeatencionporespecialistaportipo}Representación del plazo en el que se atendieron los requerimientos por responsable asignado y por tipo de requerimiento", fig.height=9.5}
+# V.4. Figura 11 ----
+  # i) Graficar ggplot de Figura 11
+  AuxFigura11 <- Tiempos  %>%
+  filter(RESPONSABLE == c("CLAUDIA ESPINOZA", "ERIKA SUAREZ",
+                           "JENIFFER MORENO", "LIM TENORIO"))
+  Figura11 <- AuxFigura11 %>% 
+  ggplot( aes(x=1, y=Díastranscurridos2, fill=RESPONSABLE)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+  xlab("") +
+  facet_grid(cols = vars(AuxFigura11$RESPONSABLE),
+             rows = vars(AuxFigura11$ACCION_TAREA),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+   scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.AZUL1 , OEFA.VERDE, 
+      OEFA.JADE, OEFA.FUCSIA,OEFA.NARANJA)) ) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none",
+        legend.direction="horizontal",
+        legend.title = element_blank(),
+        legend.text = element_text(colour="#666666", 
+                                   size=8),
+        strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7))
+
+  Figura11 
+```
+
+## Complejidad de los requerimientos en los últimos doce meses
+
+16. Con la finalidad de identifcar la complejidad de los requerimientos y optimizar su tratamiento, se determinaron ciertos criterios que ayuden a revelar esta complejidad. Los criterios[^PRE11] son i) cantidad de unidades fiscalizables involucradas, ii) presencia de unidades fiscalizables críticas, iii) dificultad de la tarea. Cada uno de estos criterios tiene un puntaje y, el promedio de estos es el peso/complejidad del requerimiento.
+
+17. En la Figura \ref{Pesosmesames} muestra de manera general los pesos/complejidad acumulados mensuales durante los últimos doce meses.
+
+```{r fig.cap="\\label{Pesosmesames}Pesos acumulados de los requerimientos mes a mes", fig.height=3}
+## VI. TERCERA SECCIÓN E ----
+
+# VI.1. Figura 12 ----
+
+  # i) Preparar la información: Filtrar el estado distinto a "ARCHIVO" y diferentes a NA
+  
+    CMIN_filtro <- CMIN_periodo %>%
+      filter(!is.na(FI_COM)) %>% 
+      mutate(Mes = month(FI_COM),
+             Periodo = year(FI_COM))
+
+  # Columna Auxiliar de Fecha para el orden
+  CMINpormes <- CMIN_filtro %>%
+    mutate(FECHA = as.Date(paste0(Periodo,"-",Mes,"-01"),
+                           format='%Y-%m-%d')) %>% 
+    select(FECHA,
+           Pesos = "PESO_TAREA") %>% 
+    group_by(FECHA) %>% 
+    summarise(Acum = round(sum(Pesos), digits = 0))
+
+# ii) Gráficar ggplot
+  Figura12 <- ggplot(CMINpormes, aes(x=FECHA, y=Acum)) +
+    geom_bar(stat = "identity", colour= "black",aes(fill= "Pesos")) +
+    geom_text(aes(label = Acum), position = position_stack(vjust = 0.5),
+              color = "black", size = 4) +
+    labs(x="", y="") +
+    scale_fill_manual("Pesos", values = alpha( c(
+      "#7fcdbb")) ) +
+    scale_x_date(date_labels = "%B",breaks = "1 month", expand = c(0.01,0)) +
+    theme(axis.ticks = element_blank(),
+          axis.text.y = element_blank(),
+          axis.text.x = element_text( colour = "black", 
+                                      size = 7, face = "bold",),
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position = "none")
+  Figura12
+
+# iii) Eliminar innecesarios
+rm(CMINpormes)
+```
+
+18. En la Figura \ref{Pesoporresponsable} se muestra, también de manera general, los pesos acumulados por responsables.[^PRE12]
+
+```{r fig.cap="\\label{Pesoporresponsable}Peso acumulado por responsable", fig.height=2.5}
+# VI.2. Figura 13 ----
+# i) Preparar la información
+  CMINporresponsable1 <- CMIN_periodo %>%
+    filter(!is.na(RESPONSABLE))
+
+  CMINsinresponsable <- CMIN_periodo %>% 
+    filter(is.na(RESPONSABLE))
+
+
+  CMINporresponsable1 <- CMINporresponsable1 %>%
+  select(RESPONSABLE,
+         Pesos = "PESO_TAREA")
+  
+  CMINporresponsable2 <- CMINporresponsable1 %>%
+  filter(RESPONSABLE == c("CLAUDIA ESPINOZA", "ERIKA SUAREZ",
+                           "JENIFFER MORENO", "LIM TENORIO")) %>% 
+  group_by(RESPONSABLE) %>% 
+  summarise(Acum = round(sum(Pesos), digits = 0))
+
+  x <- data.frame(table(CMINporresponsable2$RESPONSABLE))
+  x <- as.character(x$Var1)
+  
+# ii) Graficar ggplot
+  Figura13 <- ggplot(CMINporresponsable2, aes(x=RESPONSABLE,
+                                  y=Acum, fill = RESPONSABLE)) +
+    geom_bar(stat = "identity", width=0.6, colour= "black") +
+    geom_text(aes(label = Acum), position = position_stack(vjust = 0.5),
+              color = "black", size = 4) +
+    labs(x="", y="") +
+    scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+    scale_x_discrete(labels=str_wrap(x,
+                                     width=2)) +
+    theme(axis.ticks = element_blank(),
+          axis.text.x = element_text(colour = "black", size = 7),
+          axis.title = element_blank(),
+          plot.title = element_text( hjust = 0.5, vjust = 0.5),
+          legend.position="none")
+  
+   Figura13 
+  
+```
+
+\newpage
+# RESUMEN DE LA INFORMACIÓN REGISTRADA EN `r MES_EVALUADO` DE `r year(Inicio)`
+
+## Distribución de los requerimientos recibidos en `r Mes_evaluado` de `r year(Inicio)` por solicitante y tipo de pedido
+
+19. De acuerdo con la información del Registro, durante `r Mes_evaluado` de `r year(Inicio)` el Equipo de Comunicaciones recibió **`r nrow(CMIN_mes_i)` requerimientos de información**. La Figura \ref{Piesolicitantemes} muestra cómo se distribuyen dichos requerimientos según la categoría a la que pertenece el solicitante.
+
+```{r fig.cap="\\label{Piesolicitantemes}Distribución de los requerimientos recibidos en el mes, por solicitante", fig.height=3.5}
+# VII. CUARTA SECCIÓN A ----
+
+# VII.1. Figura 14 ----
+
+  #i) Preparar la información
+  vector <- CMIN_mes_i$T_ENTIDAD
+
+  # ii) Gráfico ggpie
+  Figura14 <- ggpie(vector)
+  Figura14
+
+  # iii)Eliminar innecesarios
+  rm(vector)
+
+```
+
+20. El Cuadro \ref{reqportipomes} muestra cómo se distribuyeron los requerimientos recibidos por el Equipo de Comunicaciones durante `r Mes_evaluado` de `r year(Inicio)` según el tipo de pedido realizado. 
+\arrayrulecolor{black}
+
+```{r}
+# VII.2. Cuadro 3 ---- 
+  # i) Preparar la información
+  tareas <- data.frame(table(CMIN_mes_i$ACCION_TAREA, useNA = c("ifany")))
+  tareas <- tareas %>% 
+    mutate(Porcentaje = paste0(round(tareas$Freq/sum(tareas$Freq)*100,
+                                    digits = 2),
+                               "%")) %>% 
+    select("Tipo de requerimiento" = "Var1",
+           Cantidad = "Freq",
+           Porcentaje = "Porcentaje")
+
+  # ii) Graficar tabla
+  kable(tareas, caption = "\\label{reqportipomes}Cantidad y porcentaje de requerimientos recibidos en el mes, por tipo", align= "lcr", format = "latex") %>%
+    kable_styling(font_size = 9, bootstrap_options = "bordered",
+                  latex_options = "HOLD_position", full_width = FALSE) %>%
+    column_spec(1 , latex_valign = "m", width = "8cm",
+                border_left = TRUE) %>%
+    column_spec(2 , latex_valign = "m", width = "2cm") %>%
+    column_spec(3 , latex_valign = "m", width = "2cm",
+                border_right = TRUE) %>%
+    row_spec(0, bold = TRUE, color = "white", background = "black",
+             align = "c")
+
+  # iii) Eliminar innecesarios
+  rm(tareas)
+
+```
+21. A continuación, el Cuadro \ref{tablatiposolicitantemes} muestra una tabla de doble entrada donde se clasifican los requerimientos recibidos por el Equipo de Comunicaciones durante `r Mes_evaluado` de `r year(Inicio)` teniendo en cuenta ambos criterios: solicitante y tipo de requerimiento.
+
+\blandscape
+\vspace*{\fill}
+\extrarowheight = -0.5ex
+\renewcommand{\arraystretch}{2.25}
+\arrayrulecolor{black}
+```{r}
+# VII.3. Cuadro 4 ----
+  # i) Preparar información
+  CMINtareasporsolicitante <- CMIN_mes_i %>%
+  mutate(id = seq(1:nrow(CMIN_mes_i))) %>%
+  select(TIPO = "ACCION_TAREA",
+         SOLICITANTE = "T_ENTIDAD") %>% 
+  filter(!is.na(TIPO))
+
+  x <- data.frame(table(CMIN$T_ENTIDAD))
+  x <- x %>%
+    mutate(TIPO = "") %>% 
+    select(TIPO,
+           SOLICITANTE = "Var1")
+
+  y <- data.frame(table(CMIN$ACCION_TAREA))
+  y <- y %>%
+    mutate(SOLICITANTE = "") %>%
+    select(TIPO = Var1,
+           SOLICITANTE)
+  
+CMINtareasporsolicitante <- rbind(x,y,CMINtareasporsolicitante)
+
+CMINtareasporsolicitante <- CMINtareasporsolicitante %>%
+  melt(value.name = "Cantidad")
+
+CMINtareasporsolicitante <- CMINtareasporsolicitante %>%
+  group_by(TIPO,
+           SOLICITANTE) %>%
+  summarise(num = n()) 
+
+CMINtareasporsolicitante <- cast(CMINtareasporsolicitante,
+                                 TIPO~SOLICITANTE)
+
+CMINtareasporsolicitante <- CMINtareasporsolicitante %>% 
+  filter(CMINtareasporsolicitante$TIPO != "") %>% 
+  select(TIPO,
+         `ASOCIACIONES, COMITES, ETC.`,
+         CGSA,
+         COFEMA,
+         CONGRESO,
+         DEFENSORIA,
+         `GOBIERNOS LOCALES`,
+         `GOBIERNOS REGIONALES`,
+         `MINISTERIOS Y OTRAS ENTIDADES PUBLICAS`,
+         OTROS,
+         SEFA,
+         SINADA)
+
+CMINtareasporsolicitante[is.na(CMINtareasporsolicitante)] <- "-"
+
+  # ii) Graficar tabla
+  kable(CMINtareasporsolicitante, caption = "\\label{tablatiposolicitantemes} Cantidad de requerimientos recibidos en el mes, por tipo y solicitante",
+        align= "lccccccccccc", format = "latex") %>%
+  kable_styling(font_size = 6.5, bootstrap_options = "bordered",
+                latex_options = "HOLD_position", full_width = FALSE) %>%
+  column_spec(1 , latex_valign = "m",
+              width = "1.8cm", border_left = TRUE) %>%
+  column_spec(2 , latex_valign = "m", width = "1.8cm") %>%
+  column_spec(3 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(4 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(5 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(6 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(7 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(8 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(9 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(10 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(11 , latex_valign = "m", width = "1.5cm") %>%
+  column_spec(12 , latex_valign = "m",
+              width = "1.5cm", border_right = TRUE) %>%
+  row_spec(0, bold = TRUE, color = "white",
+           background = "black", align = "c")
+
+  # iii) Eliminar innecesarios
+  rm(CMINtareasporsolicitante)
+```
+\extrarowheight = 0ex
+\renewcommand{\arraystretch}{0}
+\vspace*{\fill}
+\elandscape
+
+## Plazos de atención de los requerimientos a lo largo de `r Mes_evaluado` de `r year(Inicio)`
+
+22. El análisis de esta sección se enfocará en los `r nrow(CMIN_atendidos_mes)` requerimientos de información que fueron atendidos en `r Mes_evaluado` de `r year(Inicio)`.[^PRE13] De este grupo: (i) `r nrow(Atendido_enplazo_mes)` requerimientos fueron atendidos en plazo (el `r round(nrow(Atendido_enplazo_mes)/nrow(CMIN_atendidos_mes)*100, digits=2)`%); y, (ii) `r nrow(Atendido_fueradeplazo_mes)` fueron atendidos fuera de plazo (el `r round(nrow(Atendido_fueradeplazo_mes)/nrow(CMIN_atendidos_mes)*100, digits=2)`%).[^PRE14] La Figura \ref{pieatendidosmes} muestra la proporción de atendidos dentro y fuera de plazo.
+
+```{r fig.cap="\\label{pieatendidosmes}Requerimientos atendidos en el mes, según fueron atendidos dentro de plazo o no", fig.height=2}
+# VIII. CUARTA SECCIÓN B ----
+# VIII.4. Figura 15 ----
+
+  # i) Gráfico ggpie
+  vector <- CMIN_atendidos_mes$ATENC_COM
+  Figura15 <- ggpie(vector)
+  Figura15
+
+  # ii) Eliminar innecesarios
+  rm(vector)
+
+```
+
+23. La Figura \ref{Histogramaatendidosmes} muestra los requerimientos atendidos en `r Mes_evaluado` de `r year(Inicio)` agrupados por el plazo de atención.[^PRE15]
+
+```{r fig.cap="\\label{Histogramaatendidosmes}Cantidad de requerimientos atendidos en el mes, agrupados por el plazo en el que fueron atendidos", fig.height=2.5}
+# VIII.4. Figura 16 ----
+  # i) Preparación de la información
+  Tiempos_mes <- CMIN_mes %>% 
+  select(RESPONSABLE,
+         ETAPA_ACT,
+         ATENC_COM,
+         AUX_ESTADO,
+         FI_COM,
+         FR_VF_JEFE,
+         FE_VF_JEFE,
+         T_ENTIDAD,
+         ACCION_TAREA)
+
+  Tiempos_mes <- Tiempos_mes %>% 
+    filter(Tiempos_mes$ETAPA_ACT == "CONCLUIDO",
+           Tiempos_mes$ATENC_COM != "",
+           Tiempos_mes$ATENC_COM != "FALTA CONSIGNAR DOCUMENTO SUSTENTATORIO O LA FECHA DE REMISION A JEFE")
+  
+  Tiempos_mes <- Tiempos_mes %>% 
+    mutate(Díastranscurridos = bizdays(Tiempos_mes$FI_COM,
+                                       Tiempos_mes$FE_VF_JEFE,
+                                       Calendario_Peru),
+           Díastranscurridos2 = bizdays(Tiempos_mes$FI_COM,
+                                        Tiempos_mes$FR_VF_JEFE,
+                                        Calendario_Peru))
+
+  # ii) Gráfico ggplot
+  Figura16 <- ggplot(Tiempos_mes, aes(x=Díastranscurridos)) + 
+    geom_histogram(binwidth=1, fill= OEFA.AZUL2, color="black", alpha=0.9) +
+    labs(x="Plazo de atención (en días hábiles)",
+         y="Cantidad de requerimientos")
+  
+  Figura16
+
+```
+
+24. Las Figuras \ref{Histogramaplazoatendidosporsolicitantemes} y \ref{Histogramaplazoatendidosportipomes} muestran la información de la Figura \ref{Histogramaatendidosmes} agrupándola por la categoría de solicitante y el tipo de requerimiento respectivamente.
+
+\newpage
+
+```{r fig.cap="\\label{Histogramaplazoatendidosporsolicitantemes}Cantidad de requerimientos atendidos en el mes, agrupados por el plazo en el que fueron atendidos y el solicitante", fig.height=9.5}
+
+# VIII.4. Figura 17 ----
+
+  Figura17 <- ggplot(Tiempos_mes, aes(x=Díastranscurridos, fill=T_ENTIDAD)) +
+  geom_histogram(binwidth=1, color="black", alpha=0.9) +
+  labs(x="Plazo de atención (en días hábiles)",
+       y="Cantidad de requerimientos") +
+  facet_grid(rows = vars(Tiempos_mes$T_ENTIDAD),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+  scale_fill_brewer(palette="Spectral") +
+  theme(strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7),
+        legend.position = "none")
+
+  Figura17
+```
+
+\newpage
+
+```{r fig.cap="\\label{Histogramaplazoatendidosportipomes}Cantidad de requerimientos atendidos en el mes, agrupados por el plazo en el que fueron atendidos y el tipo de requerimiento que fue realizado", fig.height=9.5}
+# VIII.5. Figura 18 ----
+  Figura18 <- ggplot(Tiempos_mes, aes(x=Díastranscurridos,
+                                      fill=ACCION_TAREA)) +
+  geom_histogram(binwidth=1, color="black", alpha=0.9) +
+  labs(x="Plazo de atención (en días hábiles)",
+       y="Cantidad de requerimientos") +
+  facet_grid(rows = vars(Tiempos_mes$ACCION_TAREA),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+  scale_fill_brewer(palette="Blues") +
+  theme(strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7),
+        legend.position = "none")
+
+  Figura18
+```
+
+\newpage
+
+## Producción y tiempos del personal durante `r Mes_evaluado` de `r year(Inicio)`
+
+25. Los `r nrow(CMIN_atendidos_mes)` requerimientos de información cuyo trámite fue concluido en `r Mes_evaluado` de `r year(Inicio)` fueron atendidos por los miembros del Equipo de Comunicaciones según el detalle que se muestra en la Figura \ref{cantidadporespecialistames}.
+
+```{r fig.cap="\\label{cantidadporespecialistames}Cantidad de requerimientos atendidos en el mes, por responsable asignado", fig.height=2.5}
+# IX. CUARTA SECCIÓN C ----
+
+# IX.1. Figura 19 ----
+
+  # i) Preparar la información
+  CMINporresponsable1 <- CMIN_mes %>%
+  filter(ETAPA_ACT == "CONCLUIDO",
+         !is.na(RESPONSABLE))
+
+  CMINporresponsable1 <- CMINporresponsable1 %>%
+    select(RESPONSABLE) %>%
+    melt(value.name = "Cantidad") %>%
+    group_by(RESPONSABLE) %>% 
+    summarise(num = n()) 
+
+  x <- data.frame(table(CMINporresponsable1$RESPONSABLE))
+  x <- as.character(x$Var1)
+
+  # ii) Gráfico ggplot
+  Figura19 <- ggplot(CMINporresponsable1, aes(x=RESPONSABLE,
+                                  y=num, fill = RESPONSABLE)) + 
+    geom_bar(stat = "identity", width=0.6, colour= "black") +
+    geom_text(aes(label = num),
+              position = position_stack(vjust = 0.5),
+              color = "black", size = 4) +
+    labs(x="", y="") +
+     scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+    scale_x_discrete(labels=str_wrap(x, width=2)) +
+    theme(axis.ticks = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 7),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none")
+  
+  Figura19
+```
+
+26. El diagrama de cajas o *box-plot* que aparece en la Figura \ref{Plazoporespecialistames} muestra en cuánto tiempo los miembros del equipo atendieron los requerimientos que les fueron asignados.[^PRE16]
+
+```{r fig.cap="\\label{Plazoporespecialistames}Representación del plazo de atención en el mes, por responsable asignado", fig.height=3}
+# IX.2. Figura 20 ----
+
+  Figura20 <- Tiempos_mes  %>%
+  ggplot( aes(x=RESPONSABLE, y=Díastranscurridos2, fill=RESPONSABLE)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+  xlab("") +
+   scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE,  OEFA.NARANJA)) ) +
+  scale_x_discrete(labels=str_wrap(x, width=2)) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 7),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none")
+
+  Figura20
+```
+
+27. Las Figuras \ref{cantidadporespecialistamesportipo} y \ref{plazodeatencionmesporespecialistaportipo} muestran la información de las Figuras \ref{cantidadporespecialistames} y \ref{Plazoporespecialistames} respectivamente, agrupándola adicionalmente por el tipo de requerimiento.
+
+\newpage
+
+```{r fig.cap="\\label{cantidadporespecialistamesportipo}Cantidad de requerimientos atendido en el mes, por responsable asignado y por tipo de requerimiento", fig.height=9.5}
+# IX.3. Figura 21 ----
+  # i) Preparar la información
+  CMINporresponsable <- CMIN_mes %>%
+  filter(CMIN_mes$ETAPA_ACT == "CONCLUIDO",
+         !is.na(CMIN_mes$RESPONSABLE))
+
+  CMINporresponsable <- CMINporresponsable %>%
+    select(RESPONSABLE,
+           PEDIDO = "ACCION_TAREA")
+  
+  CMINporresponsable <- CMINporresponsable %>%
+    melt(value.name = "Cantidad")
+  
+  CMINporresponsable <- CMINporresponsable %>%
+    group_by(RESPONSABLE,
+             PEDIDO) %>%
+    summarise(num = n()) 
+  # ii) Gráfico ggplot
+  Figura21 <- ggplot(CMINporresponsable, aes(x=1, y=num, 
+                                             fill = RESPONSABLE)) + 
+  geom_bar(stat = "identity", width=0.6, colour= "black") +
+  geom_text(aes(label = num), position = position_stack(vjust = 0.5),
+            color = "black", size = 4) +
+  labs(x="", y="") +
+  facet_grid(cols = vars(CMINporresponsable$RESPONSABLE),
+             rows = vars(CMINporresponsable$PEDIDO),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+   scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE,  OEFA.NARANJA)) ) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none",
+        legend.direction="horizontal",
+        legend.title = element_blank(),
+        legend.text = element_text(colour="#666666", size=8),
+        strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7))
+  
+  Figura21
+
+  # iii) liminar innecesarios
+  rm(CMINporresponsable)
+```
+
+\newpage
+
+```{r fig.cap="\\label{plazodeatencionmesporespecialistaportipo}Representación del plazo en el que se atendieron los requerimientos en el mes, por responsable asignado y por tipo de requerimiento", fig.height=9.5}
+# IX.4. Figura 22 ----
+
+  # i) Gráfico ggplot
+  Figura22 <- Tiempos_mes  %>%
+  ggplot( aes(x=1, y=Díastranscurridos2, fill=RESPONSABLE)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6, option="A") +
+  xlab("") +
+  facet_grid(cols = vars(Tiempos_mes$RESPONSABLE),
+             rows = vars(Tiempos_mes$ACCION_TAREA),
+             labeller = label_wrap_gen(width = 5, multi_line = TRUE)) +
+   scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE, OEFA.NARANJA)) ) +
+  theme(axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none",
+        legend.direction="horizontal",
+        legend.title = element_blank(),
+        legend.text = element_text(colour="#666666", size=8),
+        strip.background = element_rect(fill = "grey20",
+                                        color = "grey80", size = 1),
+        strip.text = element_text(colour = "white", size = 7))
+
+  Figura22
+```
+
+## Complejidad de los requerimientos durante `r Mes_evaluado` de `r year(Inicio)`
+
+28. Con la finalidad de identificar la complejidad de los requerimientos y optimizar su tratamiento, se determinaron ciertos criterios que ayuden a revelar esta complejidad. Los criterios son i) cantidad de unidades fiscalizables involucradas, ii) presencia de unidades fiscalizables críticas, iii) dificultad de la tarea. Cada uno de estos criterios tiene un puntajey, el promedio de estos es el peso/complejidad del requerimiento. En la Figura \ref{Pesoporespecialistames} se muestra de manera general los pesos acumulados por responsable en el mes.
+
+```{r fig.cap="\\label{Pesoporespecialistames} Peso acumulado por responsable", fig.height=2.5}
+# X. CUARTA SECCIÓN D ----
+
+# X.1. Figura 23 ----
+
+  # i) Preparar la información
+  CMINporresponsable1 <- CMIN_mes %>%
+    filter(!is.na(RESPONSABLE))
+
+  CMINporresponsable1 <- CMINporresponsable1 %>%
+    select(RESPONSABLE,
+           Pesos = "PESO_TAREA") 
+    
+  CMINporresponsable1 <- CMINporresponsable1 %>%
+    group_by(RESPONSABLE) %>% 
+    summarise(Acum = round(sum(Pesos), digits = 0)) 
+
+  x <- data.frame(table(CMINporresponsable1$RESPONSABLE))
+  x <- as.character(x$Var1)
+
+  # ii) Gráfico ggplot
+  Figura23 <- ggplot(CMINporresponsable1, aes(x=RESPONSABLE,
+                                  y=Acum, fill = RESPONSABLE)) + 
+    geom_bar(stat = "identity", width=0.6, colour= "black") +
+    geom_text(aes(label = Acum),
+              position = position_stack(vjust = 0.5),
+              color = "black", size = 4) +
+    labs(x="", y="") +
+     scale_fill_manual("RESPONSABLE", values = alpha( c(
+      OEFA.AZUL2, OEFA.VERDE, 
+      OEFA.JADE,  OEFA.NARANJA)) ) +
+    scale_x_discrete(labels=str_wrap(x, width=2)) +
+    theme(axis.ticks = element_blank(),
+        axis.text.x = element_text(colour = "black", size = 7),
+        axis.title = element_blank(),
+        plot.title = element_text( hjust = 0.5, vjust = 0.5),
+        legend.position="none")
+  
+   Figura23
+```
+
+# INFORMACIÓN QUE CONTRIBUYE A IDENTIFICAR ERRORES DE LLENADO EN EL REGISTRO
+
+## Composición del Registro
+
+29. A la fecha en la que se realizó este análisis, el Registro del Equipo de Comunicaciones estaba compuesto de **`r ncol(CMIN)` columnas** y **`r nrow(CMIN)` filas**. En el Cuadro \ref{Columnasquecomponenelregistro} se proporciona una lista con los nombres de todas las columnas que componen el Registro.
+
+\arrayrulecolor{black}
+
+```{r}
+# XI. QUINTA SECCIÓN A ----
+
+# XI.1. Cuadro 5 ----
+  # i) Verificar formatos 
+  Clase <- vector("double", ncol(CMIN))
+
+  for (i in seq_along(CMIN)) {
+    Clase[[i]] <- class(CMIN[[i]])
+    }
+
+  # ii) Graficar tabla
+  Variables <- data.frame(
+    "No." = seq(1:ncol(CMIN)),
+    "Col." = Letrasdecolumnas[1:ncol(CMIN)],
+    Nombre = c(
+      "COD DSEM",
+      "N° HT / CORREO, ETC.",
+      "INGRESO A OEFA",
+      "INGRESO A DSEM",
+      "INGRESO A CMIN",
+      "INGRESO A COMUNICACIONES",
+      "TIPO DE DOCUMENTO",
+      "COD DOCUMENTO",
+      "NOMBRE DE ENTIDAD",
+      "TIPO DE ENTIDAD SOLICITANTE",
+      "PROCEDENCIA_PCD",
+      "ESPECIFICAR ENTIDAD SOLICITANTE",
+      "RESPONSABLE",
+      "ACCION TAREA A REALIZAR",
+      "PRODUCTO A ENTREGAR",
+      "ADMINISTRADO INVOLUCRADO",
+      "U. FISCALIZABLES INVOLUCRADAS",
+      "N° DE UNIDADES FISCALIZABLES INVOLUCRADAS",
+      "¿INCLUYE UNIDADES CRÍTICAS?",
+      "PLAZO INTERNO PRE ESTABLECIDO",
+      "VENCIMIENTO INTERNO",
+      "FECHA DE REMISION DE PRIMER PROYECTO A JEFE",
+      "FECHA DE REMISION VERSION FINAL A JEFE",
+      "FECHA DE EMISION DEL JEFE (VERSION FINAL)",
+      "TIPO DE DOCUMENTO EMITIDO POR COMUNICACIONES (VERSION FINAL)",
+      "CODIGO DE DOCUMENTO EMITIDO (VERSION FINAL)",
+      "FECHA DE CARGO O RECEPCION PCD",
+      "ETAPA ACTUAL",
+      "ATENCION COMUNICACIONES",
+      "AUX_ESTADO",
+      "PESO TAREA",
+      "OBSERVACIONES",
+      "ERROR EN FECHAS",
+      "ROTULO",
+      "1) T_OEFA-DSEM",
+      "2) T_DSEM-CMIN",
+      "3) T_CMIN-COM",
+      "4) T_ADMIN (1+2+3)",
+      "5) T_COM-INF_I",
+      "6) T_COM-INF_F",
+      "T_COM_INF_I_AUX",
+      "T_COM_INF_F_AUX",
+      "7) T_CORREC (6+5)",
+      "8) T_JEFE_DSEM",
+      "10) T_COM (6+8)",
+      "11) T_CMIN (10+9)",
+      "Proyecto"
+      ),
+    Clase = Clase
+    )
+
+  Variables <- Variables %>% 
+    mutate(Tipo = ifelse(Clase == "character", "Texto", 
+                         ifelse(Clase == "Date", "Fecha", 
+                              ifelse(Clase == "logical", "Lógico",
+                                     ifelse(Clase == "numeric", "Número",
+                                            "Otro")))))
+  Variables <- Variables %>% 
+    select("No." = "No.",
+           "Col." = "Col.",
+           Nombre = "Nombre",
+           Tipo = "Tipo")
+
+  kable(Variables, caption = "\\label{Columnasquecomponenelregistro}Lista de columnas que componen el Registro",
+        align= "cclc", format = "latex") %>%
+    kable_styling(font_size = 9, bootstrap_options = "bordered",
+                  latex_options = "HOLD_position", full_width = FALSE) %>%
+    column_spec(1 , latex_valign = "m", width = "0.5cm",
+                border_left = TRUE) %>%
+    column_spec(2 , latex_valign = "m", width = "0.5cm") %>%
+    column_spec(3 , latex_valign = "m", width = "11.5cm") %>%
+    column_spec(4 , latex_valign = "m", width = "1cm",
+                border_right = TRUE) %>%
+    row_spec(0, bold = TRUE, color = "white", background = "black",
+             align = "c")
+
+```
+
+30. Para facilitar la identificación de posibles errores de llenado en el Registro del Equipo de Comunicaciones se ejecutaron dos (2) acciones: (i) conteo de espacios vacíos y/o celdas "NA"; y, (ii) verificación lógica de la información consignada en las columnas donde se han recogido fechas. 
+
+## Conteo de espacios vacíos y/o celdas "NA"
+
+31. Existen **`r sum(data$SaleNA)` espacios vacíos y/o celdas "NA"** en el Registro del Equipo de Comunicaciones (lo que representa el `r round(sum(data$SaleNA)/(nrow(CMIN)*ncol(CMIN))*100, digits = 2)`% del total de celdas habilitadas en dicho registro), las mismas que se encuentran distribuidas en `r nrow(data)` de las `r ncol(CMIN)` columnas de acuerdo con el detalle que aparece en la Figura \ref{Espaciosvacíos}.
+
+```{r fig.align='center', fig.width=6, fig.height=6, fig.cap="\\label{Espaciosvacíos}Distribución de espacios vacíos y/o celdas NA en el Registro"}
+# XII. QUINTA SECCIÓN B ----
+# XII.1. Figura 24 ----
+  # i) Graficar ggplot
+  p <- ggplot(data, aes(x=nombre, y=SaleNA)) + 
+  geom_bar(stat = "identity", width=0.6, color="black" , fill=OEFA.AZUL1) +
+  coord_flip() +
+  labs(x="", y="") +
+  geom_text(aes(label=SaleNA), position=position_dodge(width=0.5),
+            vjust=0.4, hjust=-0.1, size = 3)
+
+  p
+
+  # ii) Eliminar innecesarios
+  rm(p,
+     Columna,
+     Clase)
+  
+```
+
+32. Por si sola, esta información no permite identificar errores en el llenado del Registro. Sin embargo, debería servir de insumo para verificar los espacios vacíos y/o celdas "NA" de las columnas respecto de las que se sospeche que esta situación pueda ser incorrecta.
+
+\newpage
+## Verificación lógica de las columnas donde se han recogido fechas
+
+33. De la revisión del Registro del Equipo de Comunicaciones, se encontró que **`r nrow(Col_fechas)` columnas albergan un total de `r sum(Col_fechas$Datos)` datos del tipo "fecha"**, los mismos que se encuentran distribuidos conforme a lo indicado en el Cuadro \ref{columnasconfechas}. 
+
+\arrayrulecolor{black}
+
+```{r}
+# XIII. QUINTA SECCIÓN C ----
+# XIII.1. Cuadro 6 ----
+  # i)Graficar tabla
+  kable(Col_fechas, caption = "\\label{columnasconfechas}Columnas que albergan fechas y cantidad de datos en cada una",
+        align= "cclc", format = "latex") %>%
+  kable_styling(font_size = 9, bootstrap_options = "bordered",
+                latex_options = "HOLD_position", full_width = FALSE) %>%
+  column_spec(1 , latex_valign = "m", width = "0.5cm",
+              border_left = TRUE) %>%
+  column_spec(2 , latex_valign = "m", width = "1cm") %>%
+  column_spec(3 , latex_valign = "m", width = "9cm") %>%
+  column_spec(4 , latex_valign = "m", width = "1cm",
+              border_right = TRUE) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "black",
+           align = "c")
+
+  # ii) Eliminar innecesarios 
+  rm(Variables)
+
+```
+
+34. Para evaluar los datos consignados en columnas se tuvo en cuenta lo siguiente:
+
+* Las columnas en las que se registran datos del tipo fecha se encuentran ordenadas de forma tal que informan sobre eventos que se suceden uno detrás de otro. Ello implica que se contemple la siguiente regla: $fecha \ en \ columna \ previa \leq fecha \ en \ columna \ posterior$.  
+* Lo anterior admite dos excepciones: (i) la columna VENCIMIENTO INTERNO, ya que esta fecha rompe la secuencia entre columnas [^PRE17]; y, (ii) los casos en los que se completa una columna sin necesidad de haber completado las columnas precedentes[^PRE18].
+
+35. Considerando lo anterior, se realizó un análisis lógico cuyos resultados observamos en el Cuadro \ref{resultadoslógicos}.
+
+\arrayrulecolor{black}
+
+```{r}
+# XIII.2. Cuadro 7 ----
+  # i) Comprobación lógica
+  CMIN_fechas <- mutate(
+    CMIN_fechas,
+    A_io = ifelse(is.na(CMIN_fechas$FI_OEFA),
+                  "ND",
+                  "C"),
+    A_ingdsem = ifelse(is.na(CMIN_fechas$FI_DSEM),
+                       "ND",
+                       ifelse(is.na(CMIN_fechas$FI_OEFA),
+                              "AV",
+                              ifelse(CMIN_fechas$FI_DSEM >= CMIN_fechas$FI_OEFA,
+                                     "C",
+                                     "I")
+                              )
+                       ),
+    A_ingcmin = ifelse(is.na(CMIN_fechas$FI_CMIN),
+                       "ND",
+                       ifelse(is.na(CMIN_fechas$FI_DSEM),
+                              ifelse(is.na(CMIN_fechas$FI_OEFA),
+                                     "CV",
+                                     ifelse(CMIN_fechas$FI_CMIN >= CMIN_fechas$FI_OEFA,
+                                            "C",
+                                            "I")
+                                     ),
+                              ifelse(CMIN_fechas$FI_CMIN >= CMIN_fechas$FI_DSEM,
+                                     "C",
+                                     "I")
+                              )
+                       ),
+    A_ingcom = ifelse(is.na(CMIN_fechas$FI_COM),
+                      "ND",
+                      ifelse(is.na(CMIN_fechas$FI_CMIN),
+                             ifelse(is.na(CMIN_fechas$FI_DSEM),
+                                    ifelse(is.na(CMIN_fechas$FI_OEFA),
+                                           "AV",
+                                           ifelse(CMIN_fechas$FI_COM >= CMIN_fechas$FI_OEFA,
+                                                  "C",
+                                                  "I")
+                                           ),
+                                    ifelse(CMIN_fechas$FI_COM >= CMIN_fechas$FI_DSEM,
+                                           "C",
+                                           "I")
+                                    ),
+                             ifelse(CMIN_fechas$FI_COM >= CMIN_fechas$FI_CMIN,
+                                    "C",
+                                    "I")
+                             )
+                      ),
+    A_venint = ifelse(is.na(CMIN_fechas$VENC_INT),
+                      "ND",
+                      ifelse(is.na(CMIN_fechas$FI_COM),
+                             "AV",
+                             ifelse(CMIN_fechas$VENC_INT >= CMIN_fechas$FI_COM,
+                                    "C",
+                                    "I")
+                             )
+                      ),
+    A_frppj = ifelse(is.na(CMIN_fechas$FR_PP_JEFE),
+                     "ND",
+                     ifelse(is.na(CMIN_fechas$FI_COM),
+                            "AV",
+                            ifelse(CMIN_fechas$FR_PP_JEFE >= CMIN_fechas$FI_COM,
+                                   "C",
+                                   "I")
+                            )
+                     ),
+    A_frvfj = ifelse(is.na(CMIN_fechas$FR_VF_JEFE),
+                     "ND",
+                     ifelse(is.na(CMIN_fechas$FR_PP_JEFE),
+                            "AV",
+                            ifelse(CMIN_fechas$FR_VF_JEFE >= CMIN_fechas$FR_PP_JEFE,
+                                   "C",
+                                   "I")
+                            )
+                     ),
+    A_fej = ifelse(is.na(CMIN_fechas$FE_VF_JEFE),
+                   "ND",
+                   ifelse(is.na(CMIN_fechas$FR_VF_JEFE),
+                          "AV",
+                          ifelse(CMIN_fechas$FE_VF_JEFE >= CMIN_fechas$FR_VF_JEFE,
+                                 "C",
+                                 "I")
+                          )
+                   ),
+    A_fpcd = ifelse(is.na(CMIN_fechas$F_RECEP_PCD),
+                    "ND",
+                    ifelse(is.na(CMIN_fechas$FE_VF_JEFE),
+                           "AV",
+                           ifelse(CMIN_fechas$F_RECEP_PCD >= CMIN_fechas$FE_VF_JEFE,
+                                  "C",
+                                  "I")
+                           )
+                    )
+    )
+
+  # ii) Nueva tabla con comprobación lógica
+  CMIN_fechas <- mutate(CMIN_fechas,
+                        Id = seq(1:nrow(CMIN_fechas)))
+  CMIN_fechas <- select(
+    CMIN_fechas,
+    "Id" = "Id",
+    "INGRESO A OEFA" = "A_io", 
+    "INGRESO A DSEM" = "A_ingdsem",  
+    "INGRESO A CMIN" = "A_ingcmin", 
+    "INGRESO A COMUNICACIONES" = "A_ingcom", 
+    "VENCIMIENTO INTERNO" = "A_venint", 
+    "FECHA DE REMISION DE PRIMER PROYECTO A JEFE" = "A_frppj",
+    "FECHA DE REMISION VERSION FINAL A JEFE" = "A_frvfj", 
+    "FECHA DE EMISION DEL JEFE (VERSION FINAL)" = "A_fej", 
+    "FECHA DE CARGO O RECEPCION PCD" = "A_fpcd"
+    ) 
+  
+  CMIN_fechasLarga <- melt(CMIN_fechas, id.vars = "Id", 
+                           variable.name = "Nombre", 
+                           value.name = "Calificación", 
+                           variable.factor = FALSE)
+  
+  CMIN_fechasAncha <- dcast(CMIN_fechasLarga, 
+                            Nombre ~ Calificación)
+    
+  if("I" %in% colnames(CMIN_fechasAncha))
+  { CMIN_fechasAncha <- CMIN_fechasAncha} else {
+    CMIN_fechasAncha <- mutate(CMIN_fechasAncha,I=0)
+  }
+  
+  if("C" %in% colnames(CMIN_fechasAncha))
+  { CMIN_fechasAncha <- CMIN_fechasAncha} else {
+    CMIN_fechasAncha <- mutate(CMIN_fechasAncha,C=0)
+  }
+  
+    
+    CMIN_fechasAncha <- select(CMIN_fechasAncha,
+                             Nombre,
+                             C,
+                             I)
+ 
+  # iii) Graficar tabla
+  kable(CMIN_fechasAncha, caption = "\\label{resultadoslógicos}Resultados de la comprobación lógica de los datos",
+        align= "lccc", format = "latex") %>%
+    kable_styling(font_size = 9, bootstrap_options = "bordered",
+                  latex_options = "HOLD_position", full_width = FALSE) %>%
+    column_spec(1 , latex_valign = "m", width = "9cm",
+                border_left = TRUE) %>%
+    column_spec(2 , latex_valign = "m", width = "1cm") %>%
+    column_spec(3 , latex_valign = "m", width = "1cm",
+                border_right = TRUE) %>%
+    row_spec(0, bold = TRUE, color = "white", background = "black",
+             align = "c") %>%
+    footnote(number = c("I (Incorrecto), indica la existencia de inconsistencias con la fecha ingresada.", 
+                        "C (Correcto), indica que no existen inconsistencias con la fecha ingresada."),
+             number_title = "Tener en cuenta:", 
+             title_format = "underline")
+  
+# iv) Eliminar innecesarios 
+  rm(CMIN_fechas,
+     CMIN_fechasLarga,
+     Letrasdecolumnas)
+  
+```
+
+\newpage
+
+# CONCLUSIONES
+
+En atención a lo expuesto en el presente documento, es posible llegar a las siguientes conclusiones:
+
+\underline{\textbf{Sobre la información registrada durante los últimos doce meses}}:
+
+* A la fecha, en este año el Equipo de Comunicaciones ha recibido `r nrow(CMIN_periodo)` requerimientos de información, de los cuales `r nrow(Archivados)` fueron archivados (el `r round(nrow(Archivados)/nrow(CMIN_periodo)*100, digits=0)`%), `r nrow(Concluidos)` fueron atendidos concluyendo su trámite (el `r round(nrow(Concluidos)/nrow(CMIN_periodo)*100, digits=0)`%) y `r nrow(CMIN_periodo)-(nrow(Archivados)+nrow(Concluidos))` se encuentran pendientes de atención (el `r round((nrow(CMIN_periodo)-(nrow(Archivados)+nrow(Concluidos)))/nrow(CMIN_periodo)*100, digits=0)`%).
+
+* De los requerimientos atendidos, el `r round(nrow(Atendido_enplazo)/nrow(CMIN_atendidos2)*100, digits=2)`% fue atendido en plazo y el `r round(nrow(Atendido_fueradeplazo)/nrow(CMIN_atendidos2)*100, digits=2)`% fuera de plazo. 
+
+* El tiempo promedio en el que se atendieron los requerimientos de información fue `r round(mean(Tiempos$Díastranscurridos), digits=0)` días hábiles.
+
+\underline{\textbf{Sobre la información registrada durante `r Mes_evaluado` de `r year(Inicio)`}}:
+
+* El Equipo de Comunicaciones recibió `r nrow(CMIN_mes_i)` y atendió `r nrow(CMIN_atendidos_mes)` requerimientos de información. 
+
+* De los requerimiento atendidos el `r round(nrow(Atendido_enplazo_mes)/nrow(CMIN_atendidos_mes)*100, digits=2)`% fue atendido en plazo y el `r round(nrow(Atendido_fueradeplazo_mes)/nrow(CMIN_atendidos_mes)*100, digits=2)`% fuera de plazo. 
+
+* El tiempo promedio en el que se atendieron los requerimientos de información fue `r round(mean(Tiempos_mes$Díastranscurridos), digits=0)` días hábiles.
+
+\underline{\textbf{Sobre la información que contribuye a identificar errores de llenado en el Registro}}:
+
+* Existen `r sum(data$SaleNA)` espacios vacíos y/o celdas "NA" en el Registro del Equipo de Comunicaciones, lo que representa el `r round(sum(data$SaleNA)/(nrow(CMIN)*ncol(CMIN))*100, digits = 2)`% del total de celdas habilitadas.
+
+* Con relación al llenado de las columnas que albergan datos del tipo fecha, se identificó `r sum(CMIN_fechasAncha$AV)` caso(s) en el/los que falta colocar información y `r sum(CMIN_fechasAncha$I)` caso(s) en el/los que el llenado de la fecha es incorrecto.
+
+[^PRE1]: Este informe fue elaborado en **[R Studio](https://rstudio.com/)** utilizando [\Rlogo](https://www.r-project.org/) (versión `r getRversion()`) y [\LaTeX](https://www.latex-project.org/).
+
+[^PRE2]: Periodo comprendido desde `r Mes_periodolower` de `r year(Inicio_periodo)` a `r Mes_evaluadolower` de `r year(Inicio)`.
+
+[^PRE3]: A partir del mes de noviembre de 2020 se incorporó al Registro los requerimientos de acceso a la información que gestiona el Equipo de Comunicaciones.
+
+[^PRE4]: Tener en cuenta que existen `r nrow(CMIN_Estadogeneral_NA)` celdas vacías en la columna "ETAPA ACTUAL" del Registro.
+
+[^PRE5]: De la revisión del Registro se encontró que filtrar la columna "ETAPA ACTUAL" por el estado "CONCLUIDO", la columna "ATENCIÓN COMUNICACIONES" posee `r nrow(Falta)` celda(s) vacía(s) y `r nrow(Falta2)` caso(s) en el/los que no se ha consignado un documento sustentatorio o la fecha de remisión al jefe de equipo. 
+[^PRE6]: El plazo al que se hace referencia en este párrafo es el plazo-meta interno establecido por el equipo para cada tipo de requerimiento.
+
+[^PRE7]: Para el cómputo del plazo de atención se ha considerado el tiempo transcurrido en días hábiles desde la fecha de ingreso al equipo de comunicaciones hasta la fecha de emisión del documento por el jefe del equipo.
+
+[^PRE8]: Se ha considerado a aquellos profesionales que laboran actualmente en el Equipo de Comunicaciones.
+
+[^PRE9]: Se ha(n) identificado `r nrow(CMINsinresponsable)` requerimiento(s) concluido(s) en el/los que no se ha asignado un responsable.
+
+[^PRE10]: Para el cómputo del plazo de atención se ha considerado el tiempo transcurrido en días hábiles desde la fecha de ingreso al equipo de comunicaciones hasta la fecha de remisión de la versión final al jefe de equipo.
+
+[^PRE11]: Se realizó una mejora en la ponderación de los criterios dentro del cálculo del peso, con respecto al mes pasado. La ponderación actual es i) 0.25, ii) 0.15 y iii) 0.6 respectivamente.
+
+[^PRE12]: Tener en cuenta que no todos los especialistas han trabajo durante el mismo periodo de tiempo. Asimismo, solo se ha tomado en cuenta a aquellos profesionales que actualmente laboran en el Equipo de Comunicaciones.
+
+[^PRE13]: Estos son los casos concluidos que cuentan con la información completa ingresada en el Registro, ya que al filtrar la columna "ETAPA ACTUAL" por el estado "CONCLUIDO", se identificó que la columna "ATENCIÓN COMUNICACIONES" posee `r nrow(Falta_mes)` celda(s) vacía(s) y `r nrow(Falta2_mes)` caso(s) en el/los que no se ha consignado un documento sustentatorio o la fecha de remisión al jefe de equipo. 
+
+[^PRE14]: Al igual que en el análisis realizado respecto del acumulado anual, el plazo al que se hace referencia en este párrafo es el plazo-meta interno establecido por el equipo para cada tipo de requerimiento.
+
+[^PRE15]: Para el cómputo del plazo de atención se han considerado los mismos criterios que se emplearon en el análisis del acumulado anual.
+
+[^PRE16]: Para el cómputo del plazo de atención se han considerado los mismos criterios que se emplearon en el análisis del acumulado anual. 
+
+[^PRE17]: Esta columna es completada automáticamente a través de una fórmula preestablecida del Registro. Dado que indica el plazo máximo para que el Equipo de Comunicaciones atienda un requerimiento, es posible que registre fechas posteriores a las que aparecen en las columnas a las que precede.
+
+[^PRE18]: Por ejemplo, cuando un documento ha llegado directamente al Equipo de Comunicaciones pero no ha pasado por DSEM.
